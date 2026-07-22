@@ -1,5 +1,7 @@
+use std::ops::{Deref, DerefMut};
+
 use bevy::{
-    app::{App, FixedUpdate, Plugin},
+    app::{App, FixedPostUpdate, FixedUpdate, Plugin},
     ecs::{
         component::Component,
         resource::Resource,
@@ -21,7 +23,7 @@ pub struct PhysicsPlugin {
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            FixedUpdate,
+            FixedPostUpdate,
             (
                 (Acceleration2::system, Velocity2::system).chain(),
                 (AngularAcceleration2::system, AngularVelocity2::system).chain(),
@@ -46,13 +48,39 @@ pub struct Drag {
     pub angular_lin_coefficient: f32,
     pub angular_quad_coefficient: f32,
 }
-#[derive(Component, Default)]
+#[derive(Component, Default, Clone)]
 #[require(Velocity2)]
 pub struct Acceleration2(pub Vec2);
 
-#[derive(Component, Default)]
+impl Deref for Acceleration2 {
+    type Target = Vec2;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for Acceleration2 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Component, Default, Clone, Debug)]
 #[require(Transform)]
 pub struct Velocity2(pub Vec2);
+impl Deref for Velocity2 {
+    type Target = Vec2;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for Velocity2 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 #[derive(Component, Default)]
 #[require(AngularVelocity2)]
 pub struct AngularAcceleration2(pub f32);
@@ -127,16 +155,21 @@ impl Acceleration2 {
     }
 }
 impl Velocity2 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self(Vec2::new(x, y))
+    }
     #[allow(clippy::needless_pass_by_value)]
     pub fn system(
         time: Res<Time>,
         simulated_dt: Option<Res<SimulatedDeltaTime>>,
-        query: Query<(&mut Transform, &mut Self, &Mass, Option<&Drag>)>,
+        query: Query<(&mut Transform, &mut Self, Option<&Mass>, Option<&Drag>)>,
     ) {
         let dt = simulated_dt.map_or(time.delta_secs(), |simulated_dt| simulated_dt.0);
         for (mut transform, mut velocity, mass, drag) in query {
             // Apply drag (if present)
-            if let Some(drag) = drag {
+            if let Some(drag) = drag
+                && let Some(mass) = mass
+            {
                 velocity.0 = drag.apply_to_velocity(velocity.0, mass.0, dt);
             }
 
